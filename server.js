@@ -9,7 +9,7 @@ app.use(express.json());
 app.use(express.static(ARCHIVE_PATH));
 
 // === Обработка API-запросов ===
-app.use('/api', async (req, res) => {
+app.use('/feed', async (req, res) => { // ← Теперь обрабатываем /feed
   try {
     const newRequest = convertOldToNew(req);
     console.log('Новый запрос:', newRequest);
@@ -27,7 +27,7 @@ app.use('/api', async (req, res) => {
 
 // === Преобразование запроса ===
 function convertOldToNew(req) {
-  if (req.path === '/api/feed') {
+  if (req.path === '/feed') { // ← Теперь проверяем /feed
     return {
       method: 'POST',
       url: 'https://www.youtube.com/youtubei/v1/browse',
