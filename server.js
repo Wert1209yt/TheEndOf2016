@@ -2,82 +2,126 @@ const express = require('express');
 const axios = require('axios');
 const path = require('path');
 
-// Создаём приложение Express
 const app = express();
-
-// Путь к архивным файлам сайта m.youtube.com (2016 год)
 const ARCHIVE_PATH = path.join(__dirname, 'archive');
 
-// Middleware для обработки JSON-запросов
 app.use(express.json());
+app.use(express.static(ARCHIVE_PATH));
 
-// === 1. API-прокси для обработки запросов к старому API ===
+// === Обработка API-запросов ===
 app.use('/api', async (req, res) => {
   try {
-    // Преобразуем старый формат запроса в новый
     const newRequest = convertOldToNew(req);
-
-    // Отправляем запрос к современному Innertube API
     const response = await axios(newRequest);
-
-    // Преобразуем новый формат ответа в старый
     const oldResponse = convertNewToOld(response.data);
-
-    // Возвращаем преобразованный ответ клиенту
     res.json(oldResponse);
   } catch (error) {
-    console.error('Ошибка API-прокси:', error.message);
+    console.error('Ошибка:', error.message);
     res.status(500).json({ error: 'Ошибка прокси' });
   }
 });
 
-// === 2. Сервер статических файлов для сайта m.youtube.com ===
-app.use(express.static(ARCHIVE_PATH));
-
-// Если запрос не попадает под API, возвращаем статические файлы
-app.get('*', (req, res) => {
-  res.sendFile(path.join(ARCHIVE_PATH, 'index.html'));
-});
-
-// === Функции преобразования запросов и ответов ===
-
-// Преобразование старого формата запроса в новый формат Innertube API
+// === Преобразование запроса ===
 function convertOldToNew(req) {
   if (req.path === '/api/feed') {
     return {
       method: 'POST',
       url: 'https://www.youtube.com/youtubei/v1/browse',
-      headers: {
-        'Content-Type': 'application/json',
-      },
+      headers: { 'Content-Type': 'application/json' },
       data: {
         context: {
           client: {
-            clientName: 'MWEB',
-            clientVersion: '2.20200720.00.01',
-          },
+            clientName: 'TVHTML5',
+            clientVersion: '1.0',
+            hl: 'en',
+            gl: 'US'
+          }
         },
-        browseId: 'FEwhat_to_watch',
-      },
+        browseId: 'FEtopics'
+      }
     };
   }
-  throw new Error(`Неизвестный путь API: ${req.path}`);
+  throw new Error(`Неизвестный путь: ${req.path}`);
 }
 
-// Преобразование нового формата ответа в старый формат для клиента
+// === Преобразование ответа в старый формат ===
 function convertNewToOld(newData) {
-  if (newData.contents) {
-    return newData.contents.map((item) => ({
-      title: item.title?.simpleText || '',
-      videoId: item.videoId || '',
-      thumbnailUrl: item.thumbnail?.thumbnails[0]?.url || '',
-    }));
-  }
-  throw new Error('Не удалось преобразовать данные');
+  const sections = newData.contents?.sections || [];
+  const items = sections.reduce((acc, section) => {
+    const shelf = section.tvSecondaryNavSectionRenderer?.tabs[0]?.content?.tvSurfaceContentRenderer?.content?.sectionListRenderer?.contents[0]?.shelfRenderer;
+    if (shelf) {
+      return acc.concat(shelf.content.horizontalListRenderer.items);
+    }
+    return acc;
+  }, []);
+
+  return {
+    responseContext: {
+      serviceTrackingParams: newData.responseContext?.serviceTrackingParams || [],
+      maxAgeSeconds: newData.responseContext?.maxAgeSeconds || 0
+    },
+    contents: {
+      sections: [{
+        tvSecondaryNavSectionRenderer: {
+          tabs: [{
+            tabRenderer: {
+              endpoint: {
+                clickTrackingParams: newData.responseContext?.serviceTrackingParams[0]?.params[0]?.value || '',
+                browseEndpoint: { browseId: 'FEtopics' }
+              },
+              title: 'Recommended',
+              selected: true,
+              content: {
+                tvSurfaceContentRenderer: {
+                  content: {
+                    sectionListRenderer: {
+                      contents: [{
+                        shelfRenderer: {
+                          title: { runs: [{ text: 'Trending' }] },
+                          endpoint: {
+                            clickTrackingParams: newData.responseContext?.serviceTrackingParams[0]?.params[0]?.value || '',
+                            browseEndpoint: { browseId: 'FEtrending' }
+                          },
+                          content: {
+                            horizontalListRenderer: {
+                              items: items.map(item => ({
+                                gridVideoRenderer: {
+                                  videoId: item.videoId,
+                                  thumbnail: {
+                                    thumbnails: item.thumbnail.thumbnails
+                                  },
+                                  title: item.title,
+                                  longBylineText: item.longBylineText,
+                                  publishedTimeText: item.publishedTimeText,
+                                  viewCountText: item.viewCountText,
+                                  lengthText: item.lengthText,
+                                  navigationEndpoint: item.navigationEndpoint,
+                                  shortBylineText: item.shortBylineText,
+                                  badges: item.badges,
+                                  channelThumbnail: item.channelThumbnail,
+                                  trackingParams: item.trackingParams,
+                                  shortViewCountText: item.shortViewCountText,
+                                  topStandaloneBadge: item.topStandaloneBadge
+                                }
+                              }))
+                            }
+                          }
+                        }
+                      }]
+                    }
+                  }
+                }
+              }
+            }
+          }]
+        }
+      }]
+    }
+  };
 }
 
-// === Запуск сервера ===
-const PORT = 3000;
-app.listen(PORT, () => {
-  console.log(`Сервер запущен на http://localhost:${PORT}`);
+app.get('*', (req, res) => {
+  res.sendFile(path.join(ARCHIVE_PATH, 'index.html'));
 });
+
+app.listen(3000, () => console.log('Сервер запущен на порту 3000'));
