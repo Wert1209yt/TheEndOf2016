@@ -4,31 +4,36 @@ const path = require('path');
 
 const app = express();
 const ARCHIVE_PATH = path.join(__dirname, 'archive');
+const API_KEY = 'ВАШ_API_КЛЮЧ_ЗДЕСЬ'; // Получите ключ через Google Cloud Console
 
 app.use(express.json());
 app.use(express.static(ARCHIVE_PATH));
 
+// === Обработка GET-запросов к /feed ===
 app.get('/feed', async (req, res) => {
   try {
     console.log('=== Начало обработки запроса ===');
     console.log('Параметры запроса:', req.query);
 
+    // Преобразуем запрос в новый формат для YouTube Data API
     const newRequest = convertOldToNew(req.query);
     console.log('Новый запрос:', newRequest);
 
-    try {
-      const response = await axios(newRequest);
-      console.log('Ответ от YouTube API:', response.data);
+    // Отправляем запрос к YouTube Data API
+    const response = await axios.get(newRequest.url, {
+      params: newRequest.params,
+      headers: {
+        'Content-Type': 'application/json',
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+      }
+    });
+    console.log('Ответ от YouTube API:', response.data);
 
-      const oldResponse = convertNewToOld(response.data);
-      console.log('Преобразованный ответ:', oldResponse);
+    // Преобразуем ответ в старый формат
+    const oldResponse = convertNewToOld(response.data);
+    console.log('Преобразованный ответ:', oldResponse);
 
-      res.json(oldResponse);
-    } catch (error) {
-      console.error('Ошибка при запросе к YouTube API:', error);
-      res.status(500).json({ error: 'Ошибка прокси: не удалось получить данные от YouTube API' });
-      return;
-    }
+    res.json(oldResponse);
   } catch (error) {
     console.error('=== ОШИБКА ПРОКСИ ===');
     console.error('Ошибка:', error.message);
@@ -37,28 +42,23 @@ app.get('/feed', async (req, res) => {
   }
 });
 
+// === Преобразование запроса ===
 function convertOldToNew(query) {
   return {
-    method: 'POST',
-    url: 'https://www.youtube.com/youtubei/v1/browse',
-    headers: {
-      'Content-Type': 'application/json',
-      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
-    },
-    data: {
-      context: {
-        client: {
-          clientName: 'TVHTML5',
-          clientVersion: '1.0',
-          hl: 'en',
-          gl: 'US'
-        }
-      },
-      browseId: 'FEtopics'
+    url: 'https://www.googleapis.com/youtube/v3/search',
+    params: {
+      key: API_KEY,
+      part: 'id,snippet',
+      maxResults: 50,
+      type: 'video',
+      q: 'popular', // Поиск популярных видео
+      regionCode: 'US',
+      relevanceLanguage: 'en'
     }
   };
 }
 
+// === Преобразование ответа в старый формат ===
 function convertNewToOld(newData) {
   try {
     console.log('=== Преобразование ответа ===');
@@ -66,8 +66,8 @@ function convertNewToOld(newData) {
 
     return {
       responseContext: {
-        serviceTrackingParams: newData.responseContext?.serviceTrackingParams || [],
-        maxAgeSeconds: newData.responseContext?.maxAgeSeconds || 0
+        serviceTrackingParams: [],
+        maxAgeSeconds: 3600
       },
       contents: {
         sections: [{
@@ -75,7 +75,7 @@ function convertNewToOld(newData) {
             tabs: [{
               tabRenderer: {
                 endpoint: {
-                  clickTrackingParams: 'CA8Q8JMBGAAiEwjBks64moLhAhXXQEwIHQdQDuI=',
+                  clickTrackingParams: '',
                   browseEndpoint: { browseId: 'FEtopics' }
                 },
                 title: 'Recommended',
@@ -88,34 +88,34 @@ function convertNewToOld(newData) {
                           shelfRenderer: {
                             title: { runs: [{ text: 'Trending' }] },
                             endpoint: {
-                              clickTrackingParams: 'CBsQ3BwYACITCMGSzriaguECFddATAgdB1AO4g==',
+                              clickTrackingParams: '',
                               browseEndpoint: { browseId: 'FEtrending' }
                             },
                             content: {
                               horizontalListRenderer: {
-                                items: [{
+                                items: newData.items.map(item => ({
                                   gridVideoRenderer: {
-                                    videoId: 'jlzVmOUP1is',
+                                    videoId: item.id.videoId,
                                     thumbnail: {
                                       thumbnails: [{
-                                        url: 'https://i.ytimg.com/vi/jlzVmOUP1is/default.jpg',
-                                        width: 120,
-                                        height: 90
+                                        url: item.snippet.thumbnails.default.url,
+                                        width: item.snippet.thumbnails.default.width,
+                                        height: item.snippet.thumbnails.default.height
                                       }]
                                     },
-                                    title: { runs: [{ text: 'Insane Taekwondo stunts in 4K Slow Motion' }] },
-                                    longBylineText: { runs: [{ text: 'The Slow Mo Guys' }] },
-                                    publishedTimeText: { runs: [{ text: '1 day ago' }] },
-                                    viewCountText: { runs: [{ text: '549,484 views' }] },
-                                    lengthText: { runs: [{ text: '12:09' }] },
+                                    title: { runs: [{ text: item.snippet.title }] },
+                                    longBylineText: { runs: [{ text: item.snippet.channelTitle }] },
+                                    publishedTimeText: { runs: [{ text: item.snippet.publishedAt }] },
+                                    viewCountText: { runs: [{ text: '0 views' }] }, // YouTube Data API не возвращает просмотры
+                                    lengthText: { runs: [{ text: '00:00' }] }, // YouTube Data API не возвращает продолжительность
                                     navigationEndpoint: {
-                                      clickTrackingParams: 'CCsQlDUYACITCMGSzriaguECFddATAgdB1AO4kCrrL-ojrO1ro4B',
-                                      watchEndpoint: { videoId: 'jlzVmOUP1is' }
+                                      clickTrackingParams: '',
+                                      watchEndpoint: { videoId: item.id.videoId }
                                     },
-                                    shortBylineText: { runs: [{ text: 'The Slow Mo Guys' }] },
-                                    trackingParams: 'CCsQlDUYACITCMGSzriaguECFddATAgdB1AO4kCrrL-ojrO1ro4B'
+                                    shortBylineText: { runs: [{ text: item.snippet.channelTitle }] },
+                                    trackingParams: ''
                                   }
-                                }]
+                                }))
                               }
                             }
                           }
