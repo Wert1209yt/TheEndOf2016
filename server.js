@@ -8,25 +8,27 @@ const ARCHIVE_PATH = path.join(__dirname, 'archive');
 app.use(express.json());
 app.use(express.static(ARCHIVE_PATH));
 
-// === Обработка GET-запросов к /feed ===
 app.get('/feed', async (req, res) => {
   try {
     console.log('=== Начало обработки запроса ===');
     console.log('Параметры запроса:', req.query);
 
-    // Преобразуем запрос в новый формат
     const newRequest = convertOldToNew(req.query);
     console.log('Новый запрос:', newRequest);
 
-    // Отправляем запрос к YouTube API
-    const response = await axios(newRequest);
-    console.log('Ответ от YouTube API:', response.data);
+    try {
+      const response = await axios(newRequest);
+      console.log('Ответ от YouTube API:', response.data);
 
-    // Преобразуем ответ в старый формат
-    const oldResponse = convertNewToOld(response.data);
-    console.log('Преобразованный ответ:', oldResponse);
+      const oldResponse = convertNewToOld(response.data);
+      console.log('Преобразованный ответ:', oldResponse);
 
-    res.json(oldResponse);
+      res.json(oldResponse);
+    } catch (error) {
+      console.error('Ошибка при запросе к YouTube API:', error);
+      res.status(500).json({ error: 'Ошибка прокси: не удалось получить данные от YouTube API' });
+      return;
+    }
   } catch (error) {
     console.error('=== ОШИБКА ПРОКСИ ===');
     console.error('Ошибка:', error.message);
@@ -35,12 +37,14 @@ app.get('/feed', async (req, res) => {
   }
 });
 
-// === Преобразование запроса ===
 function convertOldToNew(query) {
   return {
     method: 'POST',
     url: 'https://www.youtube.com/youtubei/v1/browse',
-    headers: { 'Content-Type': 'application/json' },
+    headers: {
+      'Content-Type': 'application/json',
+      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+    },
     data: {
       context: {
         client: {
@@ -55,13 +59,11 @@ function convertOldToNew(query) {
   };
 }
 
-// === Преобразование ответа в старый формат ===
 function convertNewToOld(newData) {
   try {
     console.log('=== Преобразование ответа ===');
     console.log('Структура ответа:', newData);
 
-    // Простой пример ответа для старого клиента
     return {
       responseContext: {
         serviceTrackingParams: newData.responseContext?.serviceTrackingParams || [],
