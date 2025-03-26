@@ -11,22 +11,26 @@ app.use(express.static(ARCHIVE_PATH));
 // === Обработка GET-запросов к /feed ===
 app.get('/feed', async (req, res) => {
   try {
-    // Логируем параметры запроса для отладки
+    console.log('=== Начало обработки запроса ===');
     console.log('Параметры запроса:', req.query);
 
     // Преобразуем запрос в новый формат
     const newRequest = convertOldToNew(req.query);
     console.log('Новый запрос:', newRequest);
 
-    // Отправляем запрос к современному YouTube API
+    // Отправляем запрос к YouTube API
     const response = await axios(newRequest);
     console.log('Ответ от YouTube API:', response.data);
 
     // Преобразуем ответ в старый формат
     const oldResponse = convertNewToOld(response.data);
+    console.log('Преобразованный ответ:', oldResponse);
+
     res.json(oldResponse);
   } catch (error) {
-    console.error('Ошибка прокси:', error.message);
+    console.error('=== ОШИБКА ПРОКСИ ===');
+    console.error('Ошибка:', error.message);
+    console.error('Стек:', error.stack);
     res.status(500).json({ error: 'Ошибка прокси' });
   }
 });
@@ -46,13 +50,7 @@ function convertOldToNew(query) {
           gl: 'US'
         }
       },
-      browseId: 'FEtopics',
-      params: {
-        ajax: query.ajax || '',
-        layout: query.layout || '',
-        tsp: query.tsp || '',
-        utcoffset: query.utcoffset || ''
-      }
+      browseId: 'FEtopics'
     }
   };
 }
@@ -60,15 +58,10 @@ function convertOldToNew(query) {
 // === Преобразование ответа в старый формат ===
 function convertNewToOld(newData) {
   try {
-    const sections = newData.contents?.sections || [];
-    const items = sections.reduce((acc, section) => {
-      const shelf = section.tvSecondaryNavSectionRenderer?.tabs[0]?.content?.tvSurfaceContentRenderer?.content?.sectionListRenderer?.contents[0]?.shelfRenderer;
-      if (shelf) {
-        return acc.concat(shelf.content.horizontalListRenderer.items);
-      }
-      return acc;
-    }, []);
+    console.log('=== Преобразование ответа ===');
+    console.log('Структура ответа:', newData);
 
+    // Простой пример ответа для старого клиента
     return {
       responseContext: {
         serviceTrackingParams: newData.responseContext?.serviceTrackingParams || [],
@@ -80,7 +73,7 @@ function convertNewToOld(newData) {
             tabs: [{
               tabRenderer: {
                 endpoint: {
-                  clickTrackingParams: newData.responseContext?.serviceTrackingParams[0]?.params[0]?.value || '',
+                  clickTrackingParams: 'CA8Q8JMBGAAiEwjBks64moLhAhXXQEwIHQdQDuI=',
                   browseEndpoint: { browseId: 'FEtopics' }
                 },
                 title: 'Recommended',
@@ -93,29 +86,34 @@ function convertNewToOld(newData) {
                           shelfRenderer: {
                             title: { runs: [{ text: 'Trending' }] },
                             endpoint: {
-                              clickTrackingParams: newData.responseContext?.serviceTrackingParams[0]?.params[0]?.value || '',
+                              clickTrackingParams: 'CBsQ3BwYACITCMGSzriaguECFddATAgdB1AO4g==',
                               browseEndpoint: { browseId: 'FEtrending' }
                             },
                             content: {
                               horizontalListRenderer: {
-                                items: items.map(item => ({
+                                items: [{
                                   gridVideoRenderer: {
-                                    videoId: item.videoId,
-                                    thumbnail: { thumbnails: item.thumbnail.thumbnails },
-                                    title: item.title,
-                                    longBylineText: item.longBylineText,
-                                    publishedTimeText: item.publishedTimeText,
-                                    viewCountText: item.viewCountText,
-                                    lengthText: item.lengthText,
-                                    navigationEndpoint: item.navigationEndpoint,
-                                    shortBylineText: item.shortBylineText,
-                                    badges: item.badges,
-                                    channelThumbnail: item.channelThumbnail,
-                                    trackingParams: item.trackingParams,
-                                    shortViewCountText: item.shortViewCountText,
-                                    topStandaloneBadge: item.topStandaloneBadge
+                                    videoId: 'jlzVmOUP1is',
+                                    thumbnail: {
+                                      thumbnails: [{
+                                        url: 'https://i.ytimg.com/vi/jlzVmOUP1is/default.jpg',
+                                        width: 120,
+                                        height: 90
+                                      }]
+                                    },
+                                    title: { runs: [{ text: 'Insane Taekwondo stunts in 4K Slow Motion' }] },
+                                    longBylineText: { runs: [{ text: 'The Slow Mo Guys' }] },
+                                    publishedTimeText: { runs: [{ text: '1 day ago' }] },
+                                    viewCountText: { runs: [{ text: '549,484 views' }] },
+                                    lengthText: { runs: [{ text: '12:09' }] },
+                                    navigationEndpoint: {
+                                      clickTrackingParams: 'CCsQlDUYACITCMGSzriaguECFddATAgdB1AO4kCrrL-ojrO1ro4B',
+                                      watchEndpoint: { videoId: 'jlzVmOUP1is' }
+                                    },
+                                    shortBylineText: { runs: [{ text: 'The Slow Mo Guys' }] },
+                                    trackingParams: 'CCsQlDUYACITCMGSzriaguECFddATAgdB1AO4kCrrL-ojrO1ro4B'
                                   }
-                                }))
+                                }]
                               }
                             }
                           }
@@ -140,4 +138,6 @@ app.get('*', (req, res) => {
   res.sendFile(path.join(ARCHIVE_PATH, 'index.html'));
 });
 
-app.listen(3000, () => console.log('Сервер запущен на порту 3000'));
+app.listen(3000, () => {
+  console.log('Сервер запущен на порту 3000');
+});
