@@ -8,44 +8,53 @@ const ARCHIVE_PATH = path.join(__dirname, 'archive');
 app.use(express.json());
 app.use(express.static(ARCHIVE_PATH));
 
-// === Обработка API-запросов ===
-app.use('/feed', async (req, res) => { // ← Теперь обрабатываем /feed
+// === Обработка GET-запросов к /feed ===
+app.get('/feed', async (req, res) => {
   try {
-    const newRequest = convertOldToNew(req);
+    // Логируем параметры запроса для отладки
+    console.log('Параметры запроса:', req.query);
+
+    // Преобразуем запрос в новый формат
+    const newRequest = convertOldToNew(req.query);
     console.log('Новый запрос:', newRequest);
-    
+
+    // Отправляем запрос к современному YouTube API
     const response = await axios(newRequest);
-    console.log('Ответ от YouTube:', response.data);
-    
+    console.log('Ответ от YouTube API:', response.data);
+
+    // Преобразуем ответ в старый формат
     const oldResponse = convertNewToOld(response.data);
     res.json(oldResponse);
   } catch (error) {
-    console.error('Ошибка:', error.message);
+    console.error('Ошибка прокси:', error.message);
     res.status(500).json({ error: 'Ошибка прокси' });
   }
 });
 
 // === Преобразование запроса ===
-function convertOldToNew(req) {
-  if (req.path === '/feed') { // ← Теперь проверяем /feed
-    return {
-      method: 'POST',
-      url: 'https://www.youtube.com/youtubei/v1/browse',
-      headers: { 'Content-Type': 'application/json' },
-      data: {
-        context: {
-          client: {
-            clientName: 'TVHTML5',
-            clientVersion: '1.0',
-            hl: 'en',
-            gl: 'US'
-          }
-        },
-        browseId: 'FEtopics'
+function convertOldToNew(query) {
+  return {
+    method: 'POST',
+    url: 'https://www.youtube.com/youtubei/v1/browse',
+    headers: { 'Content-Type': 'application/json' },
+    data: {
+      context: {
+        client: {
+          clientName: 'TVHTML5',
+          clientVersion: '1.0',
+          hl: 'en',
+          gl: 'US'
+        }
+      },
+      browseId: 'FEtopics',
+      params: {
+        ajax: query.ajax || '',
+        layout: query.layout || '',
+        tsp: query.tsp || '',
+        utcoffset: query.utcoffset || ''
       }
-    };
-  }
-  throw new Error(`Неизвестный путь: ${req.path}`);
+    }
+  };
 }
 
 // === Преобразование ответа в старый формат ===
@@ -92,9 +101,7 @@ function convertNewToOld(newData) {
                                 items: items.map(item => ({
                                   gridVideoRenderer: {
                                     videoId: item.videoId,
-                                    thumbnail: {
-                                      thumbnails: item.thumbnail.thumbnails
-                                    },
+                                    thumbnail: { thumbnails: item.thumbnail.thumbnails },
                                     title: item.title,
                                     longBylineText: item.longBylineText,
                                     publishedTimeText: item.publishedTimeText,
@@ -133,6 +140,4 @@ app.get('*', (req, res) => {
   res.sendFile(path.join(ARCHIVE_PATH, 'index.html'));
 });
 
-app.listen(3000, () => {
-  console.log('Сервер запущен на порту 3000');
-});
+app.listen(3000, () => console.log('Сервер запущен на порту 3000'));
